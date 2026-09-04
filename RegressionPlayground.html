@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Regression Playground</title>
+<style>
+  :root {
+    --bg: #101418;
+    --panel: #171c22;
+    --ink: #e8ecef;
+    --sub: #8a94a0;
+    --line: #5ec9f8;
+    --line-glow: rgba(94, 201, 248, 0.15);
+    --point: #f2f2f0;
+    --point-outlier: #ff6b5e;
+    --residual: #ff9f5a;
+    --grid: #232a32;
+    --accent: #d9e85f;
+    --sst: #c084fc;
+    --ssr: #5ec9f8;
+    --sse: #ff9f5a;
+    --selected: #d9e85f;
+    --mono: 'SF Mono', 'JetBrains Mono', Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+    overflow-x: hidden;
+  }
+  .wrap {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 28px 20px 40px;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  .sub {
+    color: var(--sub);
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0 0 20px;
+    max-width: 62ch;
+  }
+  .board-panel {
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 14px;
+    border: 1px solid #202730;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  .hint {
+    color: var(--sub);
+    font-size: 12.5px;
+    margin-top: 10px;
+    line-height: 1.5;
+  }
+  .row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+  }
+  button {
+    background: #1e252d;
+    color: var(--ink);
+    border: 1px solid #2c3540;
+    border-radius: 7px;
+    padding: 9px 14px;
+    font-size: 13.5px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  button:hover { background: #262f39; border-color: #3a4552; }
+  button.danger:hover { border-color: var(--point-outlier); }
+  button.primary {
+    background: var(--accent);
+    color: #14170a;
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  button.primary:hover { filter: brightness(1.08); }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid #202730;
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .stat .label {
+    font-size: 11.5px;
+    color: var(--sub);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .stat .value {
+    font-family: var(--mono);
+    font-size: 19px;
+    margin-top: 4px;
+    color: var(--ink);
+  }
+  .stat .value.hl { color: var(--line); }
+
+  .r2bar-wrap { margin-top: 18px; }
+  .r2bar-label {
+    display: flex; justify-content: space-between;
+    font-size: 12.5px; color: var(--sub); margin-bottom: 6px;
+  }
+  .r2bar-track {
+    background: #1c232b;
+    border-radius: 6px;
+    height: 10px;
+    overflow: hidden;
+  }
+  .r2bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ff6b5e, var(--accent), var(--line));
+    transition: width 0.25s ease;
+  }
+
+  .note {
+    margin-top: 22px;
+    padding: 14px 16px;
+    background: var(--panel);
+    border: 1px solid #202730;
+    border-radius: 10px;
+    font-size: 13.5px;
+    color: #c3cad1;
+    line-height: 1.6;
+  }
+  .note b { color: var(--accent); font-weight: 600; }
+
+  .decomp {
+    margin-top: 18px;
+    background: var(--panel);
+    border: 1px solid #202730;
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .decomp-title {
+    font-size: 12.5px;
+    color: var(--sub);
+    margin-bottom: 10px;
+  }
+  .decomp-rows { display: flex; flex-direction: column; gap: 8px; }
+  .decomp-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13.5px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    background: #1c232b;
+  }
+  .decomp-row .swatch {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 3px;
+    margin-right: 8px;
+  }
+  .decomp-row .name { color: #c3cad1; }
+  .decomp-row .expr { color: var(--sub); font-family: var(--mono); font-size: 12px; margin-left: 6px; }
+  .decomp-row .num { font-family: var(--mono); font-weight: 600; }
+
+  @media (max-width: 480px) {
+    .stats { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Regression Playground</h1>
+  <p class="sub">Click empty space to add a point. Drag any point to move it. Watch the best-fit line — and R² — react in real time. Try dragging one point far away from the rest.</p>
+
+  <div class="board-panel">
+    <svg id="board" viewBox="0 0 800 500" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+
+  <div class="hint">Tip: right-click (or long-press) a point to delete it. Click any point to select it, then use the breakdown button below to see how that one point's error splits into SST, SSR, and SSE.</div>
+
+  <div class="row">
+    <button id="btnResiduals" class="primary">Show residuals</button>
+    <button id="btnBreakdown">Show SST / SSR / SSE for selected point</button>
+    <button id="btnOutlier">Drop a wild outlier</button>
+    <button id="btnReset">Reset points</button>
+    <button id="btnClear" class="danger">Clear all</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="label">Slope (m)</div>
+      <div class="value hl" id="statSlope">—</div>
+    </div>
+    <div class="stat">
+      <div class="label">Intercept (b)</div>
+      <div class="value" id="statIntercept">—</div>
+    </div>
+    <div class="stat">
+      <div class="label">R²</div>
+      <div class="value" id="statR2">—</div>
+    </div>
+  </div>
+
+  <div class="r2bar-wrap">
+    <div class="r2bar-label"><span>Fit quality</span><span id="r2Words">—</span></div>
+    <div class="r2bar-track"><div class="r2bar-fill" id="r2bar" style="width:0%"></div></div>
+  </div>
+
+  <div class="decomp" id="decompPanel" style="display:none;">
+    <div class="decomp-title">Breakdown for the <b style="color:var(--selected)">selected point</b> (yellow) — click any point to select it</div>
+    <div class="decomp-rows">
+      <div class="decomp-row">
+        <span><span class="swatch" style="background:var(--sst)"></span><span class="name">SST</span><span class="expr">(yᵢ − ȳ)²</span></span>
+        <span class="num" id="sstVal" style="color:var(--sst)">—</span>
+      </div>
+      <div class="decomp-row">
+        <span><span class="swatch" style="background:var(--ssr)"></span><span class="name">SSR</span><span class="expr">(ŷ − ȳ)²</span></span>
+        <span class="num" id="ssrVal" style="color:var(--ssr)">—</span>
+      </div>
+      <div class="decomp-row">
+        <span><span class="swatch" style="background:var(--sse)"></span><span class="name">SSE</span><span class="expr">(yᵢ − ŷ)²</span></span>
+        <span class="num" id="sseVal" style="color:var(--sse)">—</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>What to try:</b> Build a clean diagonal cluster of 8–10 points, note the R². Then drag just <b>one</b> point way off to the side, far from the trend. Watch the line tilt toward it and R² collapse — one point can out-vote almost everyone else, because least-squares punishes distance <i>quadratically</i>. A point twice as far off pulls four times as hard.
+  </div>
+</div>
+
+<script>
+(function() {
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.getElementById('board');
+  const W = 800, H = 500;
+  const padL = 50, padR = 30, padT = 30, padB = 50;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  // data domain
+  const xMin = 0, xMax = 10, yMin = 0, yMax = 10;
+
+  function toPx(x, y) {
+    return {
+      px: padL + (x - xMin) / (xMax - xMin) * plotW,
+      py: padT + plotH - (y - yMin) / (yMax - yMin) * plotH
+    };
+  }
+  function toData(px, py) {
+    return {
+      x: xMin + (px - padL) / plotW * (xMax - xMin),
+      y: yMin + (padT + plotH - py) / plotH * (yMax - yMin)
+    };
+  }
+
+  let points = [];
+  let showResiduals = false;
+  let showBreakdown = false;
+  let dragIdx = null;
+  let selectedIdx = null;
+
+  function seedPoints() {
+    points = [
+      {x:1.2,y:1.8},{x:2.1,y:2.6},{x:2.8,y:3.1},{x:3.6,y:3.9},
+      {x:4.4,y:4.6},{x:5.1,y:5.3},{x:5.9,y:5.7},{x:6.7,y:6.4},
+      {x:7.5,y:7.2},{x:8.3,y:7.9}
+    ];
+  }
+  seedPoints();
+
+  function regression(pts) {
+    const n = pts.length;
+    if (n < 2) return null;
+    const sx = pts.reduce((a,p)=>a+p.x,0);
+    const sy = pts.reduce((a,p)=>a+p.y,0);
+    const sxx = pts.reduce((a,p)=>a+p.x*p.x,0);
+    const sxy = pts.reduce((a,p)=>a+p.x*p.y,0);
+    const denom = n*sxx - sx*sx;
+    if (Math.abs(denom) < 1e-9) return null;
+    const m = (n*sxy - sx*sy) / denom;
+    const b = (sy - m*sx) / n;
+    const yMean = sy / n;
+    let ssTot = 0, ssRes = 0;
+    pts.forEach(p => {
+      const yPred = m*p.x + b;
+      ssTot += (p.y - yMean)**2;
+      ssRes += (p.y - yPred)**2;
+    });
+    const r2 = ssTot < 1e-9 ? 1 : 1 - ssRes/ssTot;
+    return { m, b, r2, yMean };
+  }
+
+  function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+
+  function el(tag, attrs) {
+    const e = document.createElementNS(svgNS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  function render() {
+    clear(svg);
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+    // grid
+    const gridGroup = el('g', {});
+    for (let gx = 0; gx <= 10; gx++) {
+      const p1 = toPx(gx, 0), p2 = toPx(gx, 10);
+      gridGroup.appendChild(el('line', {x1:p1.px,y1:p1.py,x2:p2.px,y2:p2.py,stroke:'var(--grid)','stroke-width':1}));
+    }
+    for (let gy = 0; gy <= 10; gy++) {
+      const p1 = toPx(0, gy), p2 = toPx(10, gy);
+      gridGroup.appendChild(el('line', {x1:p1.px,y1:p1.py,x2:p2.px,y2:p2.py,stroke:'var(--grid)','stroke-width':1}));
+    }
+    svg.appendChild(gridGroup);
+
+    // axes
+    const axisColor = '#39424c';
+    const o = toPx(0,0), xEnd = toPx(10,0), yEnd = toPx(0,10);
+    svg.appendChild(el('line', {x1:o.px,y1:o.py,x2:xEnd.px,y2:xEnd.py,stroke:axisColor,'stroke-width':1.5}));
+    svg.appendChild(el('line', {x1:o.px,y1:o.py,x2:yEnd.px,y2:yEnd.py,stroke:axisColor,'stroke-width':1.5}));
+
+    const reg = regression(points);
+
+    // regression line + residuals
+    if (reg) {
+      if (showResiduals) {
+        points.forEach(p => {
+          const yPred = reg.m * p.x + reg.b;
+          const p1 = toPx(p.x, p.y);
+          const p2 = toPx(p.x, yPred);
+          svg.appendChild(el('line', {
+            x1:p1.px, y1:p1.py, x2:p2.px, y2:p2.py,
+            stroke:'var(--residual)', 'stroke-width':1.5, 'stroke-dasharray':'3,3', opacity:0.8
+          }));
+        });
+      }
+
+      // extend line across full domain, clipped to y range visually by data domain
+      const lx1 = xMin, ly1 = reg.m*xMin + reg.b;
+      const lx2 = xMax, ly2 = reg.m*xMax + reg.b;
+      const lp1 = toPx(lx1, ly1), lp2 = toPx(lx2, ly2);
+      const glow = el('line', {x1:lp1.px,y1:lp1.py,x2:lp2.px,y2:lp2.py,stroke:'var(--line)','stroke-width':7,opacity:0.18});
+      svg.appendChild(glow);
+      const line = el('line', {x1:lp1.px,y1:lp1.py,x2:lp2.px,y2:lp2.py,stroke:'var(--line)','stroke-width':2.5});
+      svg.appendChild(line);
+    }
+
+    // SST / SSR / SSE breakdown for the selected point
+    if (reg && showBreakdown && selectedIdx !== null && points[selectedIdx]) {
+      const p = points[selectedIdx];
+      const yPred = reg.m * p.x + reg.b;
+      const yMean = reg.yMean;
+
+      const meanP1 = toPx(xMin, yMean), meanP2 = toPx(xMax, yMean);
+      const xPx = toPx(p.x, 0).px;
+      const yActualPx = toPx(p.x, p.y).py;
+      const yPredPx = toPx(p.x, yPred).py;
+      const yMeanPx = toPx(p.x, yMean).py;
+
+      // dashed ȳ line across the plot
+      svg.appendChild(el('line', {
+        x1: meanP1.px, y1: meanP1.py, x2: meanP2.px, y2: meanP2.py,
+        stroke: '#5a6472', 'stroke-width': 1.3, 'stroke-dasharray': '5,4'
+      }));
+      const meanLbl = el('text', {x: padL - 8, y: meanP1.py + 4, fill:'#8a94a0', 'font-size':13, 'text-anchor':'end', 'font-family':'inherit'});
+      meanLbl.textContent = 'ȳ';
+      svg.appendChild(meanLbl);
+
+      // vertical dashed guide at x_i from axis to the actual point
+      svg.appendChild(el('line', {
+        x1: xPx, y1: toPx(0,0).py, x2: xPx, y2: yActualPx,
+        stroke: '#5a6472', 'stroke-width': 1.3, 'stroke-dasharray': '5,4'
+      }));
+      // horizontal dashed guide from y-axis to the actual point (y_i)
+      const yAxisP = toPx(0, p.y);
+      svg.appendChild(el('line', {
+        x1: yAxisP.px, y1: yAxisP.py, x2: xPx, y2: yActualPx,
+        stroke: '#5a6472', 'stroke-width': 1.3, 'stroke-dasharray': '5,4'
+      }));
+
+      function bracket(bx, py1, py2, color, label) {
+        const yTop = Math.min(py1, py2), yBot = Math.max(py1, py2);
+        const g = el('g', {});
+        g.appendChild(el('line', {x1:bx,y1:yTop,x2:bx,y2:yBot,stroke:color,'stroke-width':2}));
+        g.appendChild(el('line', {x1:bx,y1:yTop,x2:bx-6,y2:yTop,stroke:color,'stroke-width':2}));
+        g.appendChild(el('line', {x1:bx,y1:yBot,x2:bx-6,y2:yBot,stroke:color,'stroke-width':2}));
+        if (yBot - yTop > 4) {
+          const t = el('text', {x: bx+8, y: (yTop+yBot)/2 + 4, fill:color, 'font-size':13, 'font-weight':600, 'font-family':'inherit'});
+          t.textContent = label;
+          g.appendChild(t);
+        }
+        return g;
+      }
+
+      // SSE: yPred <-> yActual ; SSR: yMean <-> yPred ; both hugging the vertical guide
+      const b1 = xPx + 20;
+      svg.appendChild(bracket(b1, yActualPx, yPredPx, 'var(--sse)', 'SSE'));
+      svg.appendChild(bracket(b1, yPredPx, yMeanPx, 'var(--ssr)', 'SSR'));
+      // SST: full span, offset further right
+      const b2 = xPx + 90;
+      svg.appendChild(bracket(b2, yActualPx, yMeanPx, 'var(--sst)', 'SST'));
+
+      // markers for actual point and predicted point
+      svg.appendChild(el('circle', {cx:xPx, cy:yActualPx, r:6, fill:'var(--sst)', stroke:'#0c0f13','stroke-width':1.5}));
+      svg.appendChild(el('circle', {cx:xPx, cy:yPredPx, r:6, fill:'var(--line)', stroke:'#0c0f13','stroke-width':1.5}));
+
+      const yiLbl = el('text', {x: yAxisP.px - 8, y: yActualPx + 4, fill:'#c3cad1', 'font-size':13, 'text-anchor':'end', 'font-family':'inherit'});
+      yiLbl.textContent = 'yᵢ';
+      svg.appendChild(yiLbl);
+    }
+
+    // points
+    points.forEach((p, i) => {
+      const px = toPx(p.x, p.y);
+      const isSelected = showBreakdown && i === selectedIdx;
+      const c = el('circle', {
+        cx: px.px, cy: px.py, r: isSelected ? 10 : 9,
+        fill: isSelected ? 'var(--selected)' : 'var(--point)',
+        stroke: '#0c0f13', 'stroke-width': 2,
+        style: 'cursor:grab;'
+      });
+      c.dataset.idx = i;
+      c.addEventListener('pointerdown', startDrag);
+      c.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault();
+        points.splice(i, 1);
+        render();
+      });
+      svg.appendChild(c);
+    });
+
+    // labels
+    svg.appendChild(el('text', {x: padL, y: H-16, fill:'var(--sub)', 'font-size':12, 'font-family':'inherit'})).textContent = 'x';
+    const yLbl = el('text', {x: 14, y: padT+6, fill:'var(--sub)', 'font-size':12, 'font-family':'inherit'});
+    yLbl.textContent = 'y';
+    svg.appendChild(yLbl);
+
+    // stats
+    const statSlope = document.getElementById('statSlope');
+    const statIntercept = document.getElementById('statIntercept');
+    const statR2 = document.getElementById('statR2');
+    const r2bar = document.getElementById('r2bar');
+    const r2Words = document.getElementById('r2Words');
+
+    if (reg) {
+      statSlope.textContent = reg.m.toFixed(3);
+      statIntercept.textContent = reg.b.toFixed(3);
+      statR2.textContent = reg.r2.toFixed(3);
+      const pct = Math.max(0, Math.min(1, reg.r2)) * 100;
+      r2bar.style.width = pct + '%';
+      r2Words.textContent = reg.r2 > 0.85 ? 'Tight fit' : reg.r2 > 0.5 ? 'Moderate fit' : reg.r2 > 0.2 ? 'Weak fit' : 'Barely related';
+    } else {
+      statSlope.textContent = '—';
+      statIntercept.textContent = '—';
+      statR2.textContent = '—';
+      r2bar.style.width = '0%';
+      r2Words.textContent = '—';
+    }
+
+    // decomposition numbers
+    const sstVal = document.getElementById('sstVal');
+    const ssrVal = document.getElementById('ssrVal');
+    const sseVal = document.getElementById('sseVal');
+    if (reg && showBreakdown && selectedIdx !== null && points[selectedIdx]) {
+      const p = points[selectedIdx];
+      const yPred = reg.m * p.x + reg.b;
+      const yMean = reg.yMean;
+      const sst = (p.y - yMean) ** 2;
+      const ssr = (yPred - yMean) ** 2;
+      const sse = (p.y - yPred) ** 2;
+      sstVal.textContent = sst.toFixed(3);
+      ssrVal.textContent = ssr.toFixed(3);
+      sseVal.textContent = sse.toFixed(3);
+    } else {
+      sstVal.textContent = '—';
+      ssrVal.textContent = '—';
+      sseVal.textContent = '—';
+    }
+  }
+
+  function svgPoint(evt) {
+    const rect = svg.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
+    return {
+      px: (evt.clientX - rect.left) * scaleX,
+      py: (evt.clientY - rect.top) * scaleY
+    };
+  }
+
+  function startDrag(evt) {
+    evt.stopPropagation();
+    dragIdx = parseInt(evt.currentTarget.dataset.idx);
+    selectedIdx = dragIdx;
+    evt.currentTarget.setPointerCapture(evt.pointerId);
+    window.addEventListener('pointermove', onDrag);
+    window.addEventListener('pointerup', endDrag);
+    render();
+  }
+
+  function onDrag(evt) {
+    if (dragIdx === null) return;
+    const { px, py } = svgPoint(evt);
+    const d = toData(px, py);
+    points[dragIdx] = {
+      x: Math.max(xMin, Math.min(xMax, d.x)),
+      y: Math.max(yMin, Math.min(yMax, d.y))
+    };
+    render();
+  }
+
+  function endDrag() {
+    dragIdx = null;
+    window.removeEventListener('pointermove', onDrag);
+    window.removeEventListener('pointerup', endDrag);
+  }
+
+  svg.addEventListener('click', (evt) => {
+    if (dragIdx !== null) return;
+    const { px, py } = svgPoint(evt);
+    const d = toData(px, py);
+    if (d.x < xMin || d.x > xMax || d.y < yMin || d.y > yMax) return;
+    points.push({ x: d.x, y: d.y });
+    selectedIdx = points.length - 1;
+    render();
+  });
+
+  document.getElementById('btnResiduals').addEventListener('click', (e) => {
+    showResiduals = !showResiduals;
+    e.target.textContent = showResiduals ? 'Hide residuals' : 'Show residuals';
+    render();
+  });
+
+  document.getElementById('btnBreakdown').addEventListener('click', (e) => {
+    showBreakdown = !showBreakdown;
+    e.target.textContent = showBreakdown ? 'Hide SST / SSR / SSE breakdown' : 'Show SST / SSR / SSE for selected point';
+    document.getElementById('decompPanel').style.display = showBreakdown ? 'block' : 'none';
+    if (showBreakdown && selectedIdx === null && points.length > 0) {
+      selectedIdx = points.length - 1;
+    }
+    render();
+  });
+
+  document.getElementById('btnOutlier').addEventListener('click', () => {
+    if (points.length === 0) return;
+    // place a dramatic outlier
+    const corners = [{x:9.3,y:0.5},{x:0.5,y:9.3},{x:9.5,y:9.5},{x:0.4,y:0.4}];
+    const c = corners[Math.floor(Math.random()*corners.length)];
+    points.push({x: c.x, y: c.y});
+    selectedIdx = points.length - 1;
+    render();
+  });
+
+  document.getElementById('btnReset').addEventListener('click', () => {
+    seedPoints();
+    selectedIdx = points.length - 1;
+    render();
+  });
+
+  document.getElementById('btnClear').addEventListener('click', () => {
+    points = [];
+    selectedIdx = null;
+    render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
